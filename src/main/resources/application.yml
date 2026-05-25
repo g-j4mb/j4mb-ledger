@@ -12,6 +12,10 @@ spring:
       ddl-auto: validate
     open-in-view: false
     show-sql: false
+    properties:
+      hibernate:
+        # Explicit dialect — Hibernate 6 auto-detects but explicit is safer across versions.
+        dialect: org.hibernate.dialect.PostgreSQLDialect
   flyway:
     enabled: true
   docker:

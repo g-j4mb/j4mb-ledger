@@ -1,2 +1,0 @@
--- Initial schema baseline.
--- Add domain migrations starting from V2.

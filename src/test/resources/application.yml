@@ -6,3 +6,11 @@ spring:
   docker:
     compose:
       enabled: false
+  # Disable Flyway in tests — no real database is required for context load tests.
+  # Integration tests that need a real DB should use Testcontainers.
+  flyway:
+    enabled: false
+  jpa:
+    hibernate:
+      # Skip schema validation in tests — no live DB.
+      ddl-auto: none

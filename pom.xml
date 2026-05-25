@@ -68,6 +68,13 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <!-- J4MB shared platform infrastructure: TenantContext, TenantContextFilter -->
+        <dependency>
+            <groupId>com.j4mb</groupId>
+            <artifactId>j4mb-platform-commons</artifactId>
+            <version>0.0.1-SNAPSHOT</version>
+        </dependency>
     </dependencies>
 
     <build>
