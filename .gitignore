@@ -10,6 +10,11 @@ target/
 ### VS Code ###
 .vscode/
 
+### AI assistant tooling (local only) ###
+.claude/
+CLAUDE.md
+ai/
+
 ### Env ###
 .env
 .env.*
