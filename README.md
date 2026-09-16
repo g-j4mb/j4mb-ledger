@@ -144,6 +144,101 @@ gateway after JWT validation.
 
 ![Create draft journal](docs/screenshots/swagger-journal-create.png)
 
+## Frontend
+
+`frontend/` is a React SPA (Vite, TypeScript, TanStack Query, Tailwind, Radix UI)
+that consumes this API directly — a role-based shell (staff-style ERP UI) over
+Chart of Accounts, Accounts, Currencies/Exchange Rates, Fiscal Years/Periods,
+and Journal Entries.
+
+It ships with a mock-service-worker layer (`VITE_USE_MOCK=true`) for
+frontend-only development, and can be pointed at a real running instance of
+this backend (`VITE_USE_MOCK=false`) — the screenshots below are all real,
+captured against a live backend with seeded demo data, not the mocks.
+
+### Running it against this backend
+
+```bash
+cd frontend
+npm install
+cp .env .env.local   # or edit .env directly — VITE_API_BASE_URL, VITE_USE_MOCK
+npm run dev
+```
+
+The backend needs two things the frontend assumes are already in place for
+local dev, since there's no API gateway in front of it yet:
+
+1. **CORS** — `CorsConfig` allows `http://localhost:5173` (the Vite dev
+   server's default port) to call this API directly.
+2. **A provisioned tenant** — sign-in is a hardcoded demo credential
+   (`admin@j4mb.com` / `demo123`, see `AuthContext`) that assigns tenant code
+   `acme`; the tenant itself has to exist first via the internal provisioning
+   endpoint:
+
+   ```bash
+   curl -X POST http://localhost:8080/internal/admin/tenants \
+     -H "Content-Type: application/json" \
+     -d '{"tenantCode":"acme","tenantName":"Acme Corporation","provisionedBy":"admin@j4mb.com"}'
+   ```
+
+### Screenshots
+
+All captured from the real app running against this backend (tenant `acme`,
+seeded chart of accounts, accounts, and journal entries):
+
+| Login | Dashboard |
+|---|---|
+| ![Login](frontend/docs/screenshots/login.png) | ![Dashboard](frontend/docs/screenshots/dashboard.png) |
+
+| Chart of Accounts | Accounts |
+|---|---|
+| ![Chart of Accounts](frontend/docs/screenshots/chart-of-accounts.png) | ![Accounts](frontend/docs/screenshots/accounts.png) |
+
+| Currencies | Fiscal Years |
+|---|---|
+| ![Currencies](frontend/docs/screenshots/currencies.png) | ![Fiscal Years](frontend/docs/screenshots/fiscal-years.png) |
+
+| Posted Journal | New Journal Entry |
+|---|---|
+| ![Journal detail](frontend/docs/screenshots/journal-detail.png) | ![New journal entry](frontend/docs/screenshots/journal-new.png) |
+
+### Known gaps (frontend built ahead of the backend)
+
+The frontend was originally built against an assumed API contract before this
+backend existed in its current form. Wiring it up for real surfaced several
+mismatches — most were fixed (see below), a few are genuine backend feature
+gaps that are out of scope for a "wire the frontend up" pass:
+
+- **No dashboard summary endpoint.** The dashboard's stat tiles and "recent
+  journals" widget call `/api/v1/dashboard/*`, which doesn't exist on this
+  backend — they render as `—` rather than crashing.
+- **No journal list / closing list endpoints.** There's no `GET
+  /api/v1/journals` (only `GET /api/v1/journals/{id}` — you can view a journal
+  you already have the ID for, e.g. from a future audit or search feature, but
+  not browse all of them yet) and no `GET /api/v1/closing` at all (the actual
+  close/reopen/lock actions live under `/api/v1/fiscal/...` instead).
+- **Accounts list has no server-side filtering.** `GET /api/v1/accounts` only
+  accepts pagination — the search box filters client-side over the current
+  page instead.
+- **No account balance endpoint.** The `balance` domain package exists but
+  isn't exposed via any controller yet, so accounts don't show a running
+  balance in the UI.
+
+What *was* actually broken and got fixed while wiring this up: the API client
+never unwrapped this backend's `{success, data, error}` response envelope; the
+COA, Currencies, Exchange Rates, and Fiscal Years/Periods endpoints return
+plain arrays rather than the paginated shape the frontend assumed; the COA
+endpoint is a lazy per-level tree (`?parentId=`), not a single full-tree
+response; several DTO field names didn't match the real backend
+(`Account.code` vs `accountNumber`, `FiscalYear.name` vs `yearName`, journal
+lines' split `debitAmount`/`creditAmount` vs the real `entryType` + `amount`,
+etc.); and the journal creation form was calling static mock data directly
+instead of the real accounts/currencies/fiscal-periods APIs. Two real backend
+bugs also came out of actually exercising these flows end-to-end: a missing
+`updated_by` column on the fiscal-year/period tables, and journal posting's
+audit-log write failing because `AuditLog`'s JSON fields weren't mapped with
+`@JdbcTypeCode(SqlTypes.JSON)`.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).

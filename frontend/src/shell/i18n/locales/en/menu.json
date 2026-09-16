@@ -1,0 +1,24 @@
+{
+  "groups": {
+    "overview": "Overview",
+    "accounts": "Accounts",
+    "fiscal": "Fiscal",
+    "transactions": "Transactions",
+    "closing": "Closing",
+    "settings": "Settings"
+  },
+  "items": {
+    "dashboard": "Dashboard",
+    "chartOfAccounts": "Chart of Accounts",
+    "accounts": "Accounts",
+    "fiscalYears": "Fiscal Years",
+    "fiscalPeriods": "Fiscal Periods",
+    "journalEntries": "Journal Entries",
+    "postingRules": "Posting Rules",
+    "periodClosing": "Period Closing",
+    "yearEndClosing": "Year-End Closing",
+    "currencies": "Currencies",
+    "exchangeRates": "Exchange Rates",
+    "tenantSettings": "Tenant Settings"
+  }
+}

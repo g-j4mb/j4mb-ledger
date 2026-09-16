@@ -1,0 +1,56 @@
+{
+  "actions": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "edit": "Edit",
+    "delete": "Delete",
+    "create": "Create",
+    "view": "View",
+    "back": "Back",
+    "search": "Search",
+    "filter": "Filter",
+    "export": "Export",
+    "refresh": "Refresh",
+    "logout": "Logout",
+    "loading": "Loading…"
+  },
+  "status": {
+    "active": "Active",
+    "inactive": "Inactive",
+    "suspended": "Suspended",
+    "open": "Open",
+    "closed": "Closed",
+    "locked": "Locked",
+    "draft": "Draft",
+    "posted": "Posted",
+    "reversed": "Reversed"
+  },
+  "labels": {
+    "name": "Name",
+    "code": "Code",
+    "type": "Type",
+    "status": "Status",
+    "currency": "Currency",
+    "date": "Date",
+    "description": "Description",
+    "amount": "Amount",
+    "balance": "Balance",
+    "total": "Total",
+    "reference": "Reference",
+    "notes": "Notes",
+    "createdAt": "Created At",
+    "updatedAt": "Updated At"
+  },
+  "errors": {
+    "required": "This field is required",
+    "invalidEmail": "Please enter a valid email address",
+    "invalidCredentials": "Invalid email or password",
+    "somethingWentWrong": "Something went wrong. Please try again.",
+    "networkError": "Network error. Please check your connection."
+  },
+  "pagination": {
+    "showing": "Showing {{from}}–{{to}} of {{total}}",
+    "previous": "Previous",
+    "next": "Next"
+  }
+}

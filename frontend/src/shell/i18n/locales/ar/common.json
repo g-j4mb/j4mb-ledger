@@ -1,0 +1,27 @@
+{
+  "actions": {
+    "save": "حفظ",
+    "cancel": "إلغاء",
+    "edit": "تعديل",
+    "delete": "حذف",
+    "create": "إنشاء",
+    "view": "عرض",
+    "back": "رجوع",
+    "search": "بحث",
+    "filter": "تصفية",
+    "export": "تصدير",
+    "refresh": "تحديث",
+    "logout": "تسجيل الخروج",
+    "loading": "جاري التحميل…"
+  },
+  "status": {
+    "active": "نشط",
+    "inactive": "غير نشط",
+    "open": "مفتوح",
+    "closed": "مغلق",
+    "locked": "مقفل",
+    "draft": "مسودة",
+    "posted": "مرحّل",
+    "reversed": "معكوس"
+  }
+}

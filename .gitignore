@@ -30,3 +30,8 @@ logs/
 
 ### Spring Boot ###
 HELP.md
+
+### Frontend (frontend/) ###
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/

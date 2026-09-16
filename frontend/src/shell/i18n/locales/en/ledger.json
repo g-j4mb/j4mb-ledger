@@ -1,0 +1,47 @@
+{
+  "accountTypes": {
+    "ASSET": "Asset",
+    "LIABILITY": "Liability",
+    "EQUITY": "Equity",
+    "REVENUE": "Revenue",
+    "EXPENSE": "Expense"
+  },
+  "entryStatus": {
+    "DRAFT": "Draft",
+    "POSTED": "Posted",
+    "REVERSED": "Reversed"
+  },
+  "fiscalStatus": {
+    "OPEN": "Open",
+    "CLOSED": "Closed",
+    "LOCKED": "Locked"
+  },
+  "closingType": {
+    "PERIOD": "Period Closing",
+    "YEAR": "Year-End Closing"
+  },
+  "labels": {
+    "debit": "Debit",
+    "credit": "Credit",
+    "totalDebit": "Total Debit",
+    "totalCredit": "Total Credit",
+    "referenceNo": "Reference No.",
+    "entryDate": "Entry Date",
+    "fiscalYear": "Fiscal Year",
+    "fiscalPeriod": "Fiscal Period",
+    "accountCode": "Account Code",
+    "accountName": "Account Name",
+    "parentAccount": "Parent Account",
+    "isLeafAccount": "Leaf Account",
+    "decimalPlaces": "Decimal Places",
+    "baseCurrency": "Base Currency",
+    "exchangeRate": "Exchange Rate",
+    "effectiveDate": "Effective Date",
+    "triggerEvent": "Trigger Event",
+    "debitAccount": "Debit Account",
+    "creditAccount": "Credit Account",
+    "periodNumber": "Period Number",
+    "closedBy": "Closed By",
+    "closedAt": "Closed At"
+  }
+}
