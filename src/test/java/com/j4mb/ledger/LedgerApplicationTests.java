@@ -1,8 +1,22 @@
 package com.j4mb.ledger;
 
+import com.j4mb.ledger.account.repository.AccountRepository;
+import com.j4mb.ledger.audit.repository.AuditLogRepository;
+import com.j4mb.ledger.balance.repository.AccountBalanceRepository;
+import com.j4mb.ledger.coa.repository.CoaNodeRepository;
+import com.j4mb.ledger.currency.repository.CurrencyRepository;
+import com.j4mb.ledger.currency.repository.ExchangeRateRepository;
+import com.j4mb.ledger.fiscal.repository.FiscalPeriodRepository;
+import com.j4mb.ledger.fiscal.repository.FiscalYearRepository;
+import com.j4mb.ledger.journal.repository.JournalHeadRepository;
+import com.j4mb.ledger.journal.repository.JournalLineRepository;
+import com.j4mb.ledger.platform.TenantRepository;
+import com.j4mb.ledger.posting.repository.IdempotencyKeyRepository;
+import com.j4mb.ledger.posting.repository.PostingRuleRepository;
+import com.j4mb.ledger.shared.context.UserContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import javax.sql.DataSource;
 
@@ -41,8 +55,32 @@ class LedgerApplicationTests {
      * SchemaMultiTenantConnectionProvider and HibernateConfig still wire up
      * correctly against this mock.
      */
-    @MockBean
-    DataSource dataSource;
+    @MockitoBean DataSource dataSource;
+
+    /**
+     * JpaRepositoriesAutoConfiguration is excluded (no real DB), so all JPA
+     * repositories must be mocked here to satisfy constructor injection in services.
+     */
+    @MockitoBean TenantRepository          tenantRepository;
+    @MockitoBean AccountRepository         accountRepository;
+    @MockitoBean CoaNodeRepository         coaNodeRepository;
+    @MockitoBean AccountBalanceRepository  accountBalanceRepository;
+    @MockitoBean AuditLogRepository        auditLogRepository;
+    @MockitoBean FiscalYearRepository      fiscalYearRepository;
+    @MockitoBean FiscalPeriodRepository    fiscalPeriodRepository;
+    @MockitoBean JournalHeadRepository     journalHeadRepository;
+    @MockitoBean JournalLineRepository     journalLineRepository;
+    @MockitoBean CurrencyRepository        currencyRepository;
+    @MockitoBean ExchangeRateRepository    exchangeRateRepository;
+    @MockitoBean PostingRuleRepository     postingRuleRepository;
+    @MockitoBean IdempotencyKeyRepository  idempotencyKeyRepository;
+
+    /**
+     * UserContext is request-scoped; outside an active HTTP request the CGLIB proxy
+     * throws ScopeNotActiveException. Services that inject UserContext (CoaService,
+     * AccountService, etc.) will fail to wire unless we provide a flat mock here.
+     */
+    @MockitoBean UserContext userContext;
 
     @Test
     void contextLoads() {

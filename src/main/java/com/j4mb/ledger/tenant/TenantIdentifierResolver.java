@@ -2,6 +2,7 @@ package com.j4mb.ledger.tenant;
 
 import com.j4mb.commons.tenant.TenantContext;
 import org.hibernate.context.spi.CurrentTenantIdentifierResolver;
+import org.springframework.beans.factory.support.ScopeNotActiveException;
 import org.springframework.stereotype.Component;
 
 /**
@@ -19,7 +20,9 @@ import org.springframework.stereotype.Component;
  *
  * <p>Injected with the request-scoped {@link TenantContext} as a CGLIB proxy.
  * Spring resolves the actual request-scoped instance on every call, so injection
- * into this singleton bean is safe.
+ * into this singleton bean is safe for in-request use. Outside an active request
+ * (Hibernate bootstrap, {@code @Scheduled}, async tasks), the proxy throws
+ * {@link ScopeNotActiveException}; that is caught here and the fallback schema is returned.
  */
 @Component
 public class TenantIdentifierResolver implements CurrentTenantIdentifierResolver<String> {
@@ -36,11 +39,21 @@ public class TenantIdentifierResolver implements CurrentTenantIdentifierResolver
     /**
      * Returns the PostgreSQL schema name for the current tenant, e.g. {@code "tenant_acme"}.
      * Falls back to {@code "platform"} when no tenant context is active.
+     *
+     * <p>The {@code ScopeNotActiveException} guard is necessary because Hibernate calls this
+     * method during {@code SessionFactory} bootstrap (schema validation) before any HTTP
+     * request exists. The scoped proxy throws in that case; we catch it and return the
+     * fallback schema so startup succeeds.
      */
     @Override
     public String resolveCurrentTenantIdentifier() {
-        if (tenantContext.isInitialized()) {
-            return tenantContext.getSchemaName();
+        try {
+            if (tenantContext.isInitialized()) {
+                return tenantContext.getSchemaName();
+            }
+        } catch (ScopeNotActiveException ignored) {
+            // No active request scope: Hibernate bootstrap, @Scheduled, async threads, etc.
+            // Fall through to return the platform fallback.
         }
         return FALLBACK_SCHEMA;
     }

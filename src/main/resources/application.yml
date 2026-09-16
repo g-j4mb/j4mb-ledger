@@ -4,12 +4,12 @@ spring:
   application:
     name: j4mb-ledger
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:${POSTGRES_PORT:5432}/j4mb_ledger}
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:${POSTGRES_PORT:5433}/j4mb_ledger}
     username: ${SPRING_DATASOURCE_USERNAME:j4mb}
-    password: ${SPRING_DATASOURCE_PASSWORD:j4mb}
+    password: ${SPRING_DATASOURCE_PASSWORD:j4mb123}
   jpa:
     hibernate:
-      ddl-auto: validate
+      ddl-auto: none
     open-in-view: false
     show-sql: false
     properties:
@@ -18,6 +18,10 @@ spring:
         dialect: org.hibernate.dialect.PostgreSQLDialect
   flyway:
     enabled: true
+    # Platform-only migrations run automatically at startup.
+    # Tenant schema migrations (db/migration/tenant/) are run programmatically
+    # by TenantMigrator during tenant provisioning — one run per new tenant schema.
+    locations: classpath:db/migration/platform
   docker:
     compose:
       enabled: false
@@ -38,3 +42,17 @@ management:
       probes:
         enabled: true
       show-details: when-authorized
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+    display-request-duration: true
+  group-configs:
+    - group: internal
+      paths-to-match: /internal/**
+    - group: ledger
+      paths-to-match: /api/**
