@@ -95,24 +95,22 @@ public class JournalPostingService {
         Map<UUID, CoaNode> coaNodeMap = coaNodeRepository.findAllById(coaNodeIds).stream()
                 .collect(Collectors.toMap(CoaNode::getId, n -> n));
 
-        // 8. Overdraft check
-        balanceProjectionService.checkOverdraftAll(lines, journal.getFiscalPeriodId(), accountMap, coaNodeMap);
-
-        // 9. Compute totals
+        // 8. Compute totals
         BigDecimal totalDebit  = lines.stream().filter(JournalLine::isDebit)
                 .map(JournalLine::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
         BigDecimal totalCredit = lines.stream().filter(JournalLine::isCredit)
                 .map(JournalLine::getAmount).reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        // 10. Post
+        // 9. Post
         journal.updateTotals(totalDebit, totalCredit);
         journal.markPosted(postedBy);
         JournalHead saved = journalHeadRepository.save(journal);
 
-        // 11. Apply balance projection
-        balanceProjectionService.applyJournal(lines, journal.getFiscalPeriodId(), accountMap, postedBy);
+        // 10. Validate overdraft limits and apply balance projection atomically (per account,
+        // in canonical accountId order — see BalanceProjectionService.applyJournal for why)
+        balanceProjectionService.applyJournal(lines, journal.getFiscalPeriodId(), accountMap, coaNodeMap, postedBy);
 
-        // 12. Audit
+        // 11. Audit
         auditService.record("JOURNAL", saved.getId(), "POSTED", postedBy, null, saved);
 
         log.info("Journal posted: journalId={}, number={}, debit={}, credit={}",

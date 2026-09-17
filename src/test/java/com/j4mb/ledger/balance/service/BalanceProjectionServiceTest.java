@@ -11,11 +11,13 @@ import com.j4mb.ledger.journal.domain.JournalLine;
 import com.j4mb.ledger.shared.exception.InsufficientBalanceException;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -24,6 +26,9 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -67,31 +72,36 @@ class BalanceProjectionServiceTest {
                 new BigDecimal(amount), BigDecimal.ONE, "test");
     }
 
-    // ---- checkOverdraftAll tests ----------------------------------------
+    // ---- applyJournal: allowNegativeBalance accounts skip the limit check ----
 
     @Test
-    void checkOverdraftAll_skipsAccountWithAllowNegativeBalance() {
+    void applyJournal_unconditionalUpdate_forAccountWithAllowNegativeBalance() {
         // Given: account under a node with allowNegativeBalance=true
-        UUID coaNodeId    = UUID.randomUUID();
-        Account account   = account(coaNodeId);
-        CoaNode coaNode   = allowNegativeNode();
-        UUID periodId     = UUID.randomUUID();
+        UUID coaNodeId = UUID.randomUUID();
+        Account account = account(coaNodeId);
+        CoaNode coaNode = allowNegativeNode();
+        UUID periodId   = UUID.randomUUID();
+
+        when(balanceRepository.applyDelta(eq(account.getId()), eq(periodId), eq("MYR"),
+                any(), any(), anyString(), any(Instant.class))).thenReturn(1);
 
         // A massive credit that would normally breach any overdraft
         List<JournalLine> lines = List.of(
                 debitLine(account.getId(), "10000.00"),
                 creditLine(account.getId(), "10000.00")
         );
-        Map<UUID, Account>  accountMap = Map.of(account.getId(), account);
-        Map<UUID, CoaNode>  coaNodeMap = Map.of(coaNodeId, coaNode);
+        Map<UUID, Account> accountMap = Map.of(account.getId(), account);
+        Map<UUID, CoaNode> coaNodeMap = Map.of(coaNodeId, coaNode);
 
-        // When / Then — no exception thrown, repository never queried
-        service.checkOverdraftAll(lines, periodId, accountMap, coaNodeMap);
-        verify(balanceRepository, never()).findByAccountIdAndFiscalPeriodIdAndCurrencyCode(any(), any(), any());
+        // When / Then — the unconditional (no-limit) update path is used, never the limited one
+        service.applyJournal(lines, periodId, accountMap, coaNodeMap, "poster");
+        verify(balanceRepository, never()).applyDeltaIfWithinLimit(any(), any(), any(), any(), any(), any(), any(), any());
     }
 
+    // ---- applyJournal: overdraft enforcement via the conditional UPDATE ----
+
     @Test
-    void checkOverdraftAll_throwsWhenCreditBreachesLimit() {
+    void applyJournal_throwsWhenCreditBreachesLimit() {
         // Given: account under a restricted node (allowNegativeBalance=false), zero overdraft limit
         UUID coaNodeId  = UUID.randomUUID();
         Account account = Account.create(coaNodeId, "ACC-001", "Bank", "MYR", "test");
@@ -99,138 +109,138 @@ class BalanceProjectionServiceTest {
         CoaNode coaNode = restrictedNode();
         UUID periodId   = UUID.randomUUID();
 
-        // No existing balance → zero-stub (closingDebit=0, closingCredit=0)
+        // Conditional update affects 0 rows (limit breached), and a balance row already exists
+        when(balanceRepository.applyDeltaIfWithinLimit(eq(account.getId()), eq(periodId), eq("MYR"),
+                any(), any(), any(), anyString(), any(Instant.class))).thenReturn(0);
         when(balanceRepository.findByAccountIdAndFiscalPeriodIdAndCurrencyCode(
                 account.getId(), periodId, "MYR"))
-                .thenReturn(Optional.empty());
+                .thenReturn(Optional.of(AccountBalance.open(
+                        account.getId(), periodId, "MYR", BigDecimal.ZERO, BigDecimal.ZERO, "system")));
 
-        // A net credit of 500 → projectedNet = 0 + 0 - (0 + 500) = -500 < -0 (overdraftLimit.negate())
         List<JournalLine> lines = List.of(
                 debitLine(account.getId(), "100.00"),
                 creditLine(account.getId(), "600.00")
         );
-        Map<UUID, Account>  accountMap = Map.of(account.getId(), account);
-        Map<UUID, CoaNode>  coaNodeMap = Map.of(coaNodeId, coaNode);
+        Map<UUID, Account> accountMap = Map.of(account.getId(), account);
+        Map<UUID, CoaNode> coaNodeMap = Map.of(coaNodeId, coaNode);
 
         // When / Then
-        assertThatThrownBy(() -> service.checkOverdraftAll(lines, periodId, accountMap, coaNodeMap))
+        assertThatThrownBy(() -> service.applyJournal(lines, periodId, accountMap, coaNodeMap, "poster"))
                 .isInstanceOf(InsufficientBalanceException.class)
                 .hasMessageContaining("ACC-001");
     }
 
     @Test
-    void checkOverdraftAll_allowsPostingWithinOverdraftLimit() {
-        // Given: overdraft limit = 1000, current net = 200, posting a net credit of 800
-        // projectedNet = (200 + 0) - (0 + 800) = -600 > -1000 (limit) → OK
+    void applyJournal_allowsPostingWithinOverdraftLimit() {
+        // Given: the conditional UPDATE succeeds (limit not breached)
         UUID coaNodeId  = UUID.randomUUID();
         Account account = Account.create(coaNodeId, "ACC-002", "Overdraft Account", "MYR", "test");
-        // We need to set overdraft limit to 1000 — Account has no setter; rely on test scenario
-        // where existing balance has closingDebit=1200, closingCredit=1000 (net=200)
         CoaNode coaNode = restrictedNode();
         UUID periodId   = UUID.randomUUID();
 
-        AccountBalance existingBalance = AccountBalance.open(
-                account.getId(), periodId, "MYR",
-                new BigDecimal("1200.00"), new BigDecimal("1000.00"), "system");
+        when(balanceRepository.applyDeltaIfWithinLimit(eq(account.getId()), eq(periodId), eq("MYR"),
+                any(), any(), any(), anyString(), any(Instant.class))).thenReturn(1);
 
-        when(balanceRepository.findByAccountIdAndFiscalPeriodIdAndCurrencyCode(
-                account.getId(), periodId, "MYR"))
-                .thenReturn(Optional.of(existingBalance));
-
-        // net credit = 800, net debit = 0
-        // projectedNet = (1200 + 0) - (1000 + 800) = 1200 - 1800 = -600
-        // overdraftLimit = 0 (default) → negate = 0 → -600 < 0 → would throw
-        // To test "within limit", we set up a scenario where net is positive after posting:
-        // credit = 100, debit = 0 → projectedNet = 1200 - 1100 = 100 > 0 → OK
         List<JournalLine> lines = List.of(
                 creditLine(account.getId(), "100.00")
         );
-        Map<UUID, Account>  accountMap = Map.of(account.getId(), account);
-        Map<UUID, CoaNode>  coaNodeMap = Map.of(coaNodeId, coaNode);
+        Map<UUID, Account> accountMap = Map.of(account.getId(), account);
+        Map<UUID, CoaNode> coaNodeMap = Map.of(coaNodeId, coaNode);
 
-        // When / Then — no exception (net stays positive)
-        service.checkOverdraftAll(lines, periodId, accountMap, coaNodeMap);
+        // When / Then — no exception
+        service.applyJournal(lines, periodId, accountMap, coaNodeMap, "poster");
+        verify(balanceRepository, never()).findByAccountIdAndFiscalPeriodIdAndCurrencyCode(any(), any(), any());
     }
 
     @Test
-    void checkOverdraftAll_noExistingBalance_creditExceedsZeroLimit_throws() {
-        // Given: no existing balance (zero-stub), restricted node, overdraft limit = 0
-        // Any net credit will make projectedNet negative → breach
+    void applyJournal_noExistingBalanceRow_createsItThenRetriesUpdate() {
+        // Given: first conditional UPDATE affects 0 rows because no balance row exists yet
         UUID coaNodeId  = UUID.randomUUID();
         Account account = Account.create(coaNodeId, "ACC-004", "No Balance Account", "MYR", "test");
         CoaNode coaNode = restrictedNode();
         UUID periodId   = UUID.randomUUID();
 
+        when(balanceRepository.applyDeltaIfWithinLimit(eq(account.getId()), eq(periodId), eq("MYR"),
+                any(), any(), any(), anyString(), any(Instant.class)))
+                .thenReturn(0)  // first attempt: row doesn't exist
+                .thenReturn(1); // retry after creation: succeeds
         when(balanceRepository.findByAccountIdAndFiscalPeriodIdAndCurrencyCode(
                 account.getId(), periodId, "MYR"))
                 .thenReturn(Optional.empty());
+        when(balanceRepository.saveAndFlush(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        // Pure credit line — net credit positive, net debit zero → projectedNet < 0
-        List<JournalLine> lines = List.of(
-                creditLine(account.getId(), "1.00")
-        );
-        Map<UUID, Account>  accountMap = Map.of(account.getId(), account);
-        Map<UUID, CoaNode>  coaNodeMap = Map.of(coaNodeId, coaNode);
+        List<JournalLine> lines = List.of(debitLine(account.getId(), "1.00"));
+        Map<UUID, Account> accountMap = Map.of(account.getId(), account);
+        Map<UUID, CoaNode> coaNodeMap = Map.of(coaNodeId, coaNode);
+
+        // When
+        service.applyJournal(lines, periodId, accountMap, coaNodeMap, "poster");
+
+        // Then
+        verify(balanceRepository).saveAndFlush(any(AccountBalance.class));
+    }
+
+    @Test
+    void applyJournal_noExistingBalance_creditExceedsZeroLimit_throws() {
+        // Given: row gets created (zero-stub), but the retried conditional UPDATE still fails
+        // because a pure credit against a zero balance breaches the zero overdraft limit
+        UUID coaNodeId  = UUID.randomUUID();
+        Account account = Account.create(coaNodeId, "ACC-004", "No Balance Account", "MYR", "test");
+        CoaNode coaNode = restrictedNode();
+        UUID periodId   = UUID.randomUUID();
+
+        when(balanceRepository.applyDeltaIfWithinLimit(eq(account.getId()), eq(periodId), eq("MYR"),
+                any(), any(), any(), anyString(), any(Instant.class))).thenReturn(0);
+        when(balanceRepository.findByAccountIdAndFiscalPeriodIdAndCurrencyCode(
+                account.getId(), periodId, "MYR"))
+                .thenReturn(Optional.empty())
+                .thenReturn(Optional.of(AccountBalance.open(
+                        account.getId(), periodId, "MYR", BigDecimal.ZERO, BigDecimal.ZERO, "poster")));
+        when(balanceRepository.saveAndFlush(any())).thenAnswer(inv -> inv.getArgument(0));
+
+        List<JournalLine> lines = List.of(creditLine(account.getId(), "1.00"));
+        Map<UUID, Account> accountMap = Map.of(account.getId(), account);
+        Map<UUID, CoaNode> coaNodeMap = Map.of(coaNodeId, coaNode);
 
         // When / Then
-        assertThatThrownBy(() -> service.checkOverdraftAll(lines, periodId, accountMap, coaNodeMap))
+        assertThatThrownBy(() -> service.applyJournal(lines, periodId, accountMap, coaNodeMap, "poster"))
                 .isInstanceOf(InsufficientBalanceException.class)
                 .hasMessageContaining("ACC-004");
     }
 
-    // ---- applyJournal tests ---------------------------------------------
-
     @Test
-    void applyJournal_createsNewBalanceRow_andAppliesDebit() {
-        // Given
+    void applyJournal_processesAccountsInCanonicalUuidOrder() {
+        // Given: two accounts, deliberately referenced in the journal's lines in the
+        // opposite order to their UUID sort order
         UUID coaNodeId = UUID.randomUUID();
-        Account account = account(coaNodeId);
-        UUID periodId   = UUID.randomUUID();
+        CoaNode coaNode = allowNegativeNode();
+        UUID periodId  = UUID.randomUUID();
 
-        when(balanceRepository.findByAccountIdAndFiscalPeriodIdAndCurrencyCode(
-                account.getId(), periodId, "MYR"))
-                .thenReturn(Optional.empty());
-        when(balanceRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        Account lowId  = account(coaNodeId);
+        Account highId = account(coaNodeId);
+        // Force a deterministic ordering regardless of random UUID generation
+        Account first  = lowId.getId().compareTo(highId.getId()) < 0 ? lowId : highId;
+        Account second = first == lowId ? highId : lowId;
 
-        List<JournalLine> lines = List.of(debitLine(account.getId(), "300.00"));
-        Map<UUID, Account> accountMap = Map.of(account.getId(), account);
+        when(balanceRepository.applyDelta(any(), eq(periodId), eq("MYR"), any(), any(), anyString(), any(Instant.class)))
+                .thenReturn(1);
 
-        // When
-        service.applyJournal(lines, periodId, accountMap, "poster");
-
-        // Then
-        verify(balanceRepository).save(any(AccountBalance.class));
-    }
-
-    @Test
-    void applyJournal_updatesExistingBalanceRow() {
-        // Given
-        UUID coaNodeId  = UUID.randomUUID();
-        Account account = account(coaNodeId);
-        UUID periodId   = UUID.randomUUID();
-
-        AccountBalance existing = AccountBalance.open(
-                account.getId(), periodId, "MYR",
-                new BigDecimal("500.00"), BigDecimal.ZERO, "system");
-
-        when(balanceRepository.findByAccountIdAndFiscalPeriodIdAndCurrencyCode(
-                account.getId(), periodId, "MYR"))
-                .thenReturn(Optional.of(existing));
-        when(balanceRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-
+        // Lines list the "second" (higher UUID) account first, "first" (lower UUID) second —
+        // canonical processing order must still be first, then second.
         List<JournalLine> lines = List.of(
-                debitLine(account.getId(), "200.00"),
-                creditLine(account.getId(), "50.00")
+                debitLine(second.getId(), "50.00"),
+                debitLine(first.getId(), "50.00")
         );
-        Map<UUID, Account> accountMap = Map.of(account.getId(), account);
+        Map<UUID, Account> accountMap = Map.of(first.getId(), first, second.getId(), second);
+        Map<UUID, CoaNode> coaNodeMap = Map.of(coaNodeId, coaNode);
 
         // When
-        service.applyJournal(lines, periodId, accountMap, "poster");
+        service.applyJournal(lines, periodId, accountMap, coaNodeMap, "poster");
 
-        // Then: closing debit = opening 500 + period 200 = 700; closing credit = 0 + 50 = 50
-        assertThat(existing.getClosingDebit()).isEqualByComparingTo("700.00");
-        assertThat(existing.getClosingCredit()).isEqualByComparingTo("50.00");
-        assertThat(existing.getUpdatedBy()).isEqualTo("poster");
-        verify(balanceRepository).save(existing);
+        // Then: the lower-UUID account is always updated before the higher-UUID one,
+        // regardless of the order the journal's lines referenced them in
+        InOrder order = inOrder(balanceRepository);
+        order.verify(balanceRepository).applyDelta(eq(first.getId()), eq(periodId), eq("MYR"), any(), any(), anyString(), any(Instant.class));
+        order.verify(balanceRepository).applyDelta(eq(second.getId()), eq(periodId), eq("MYR"), any(), any(), anyString(), any(Instant.class));
     }
 }

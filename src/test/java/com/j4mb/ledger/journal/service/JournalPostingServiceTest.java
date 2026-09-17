@@ -99,7 +99,7 @@ class JournalPostingServiceTest {
         assertThat(posted.getTotalCredit()).isEqualByComparingTo("1000.00");
         assertThat(posted.getPostedBy()).isEqualTo("admin");
         verify(auditService).record("JOURNAL", posted.getId(), "POSTED", "admin", null, posted);
-        verify(balanceProjectionService).applyJournal(any(), any(), any(), any());
+        verify(balanceProjectionService).applyJournal(any(), any(), any(), any(), any());
     }
 
     @Test
@@ -208,8 +208,9 @@ class JournalPostingServiceTest {
         when(journalLineRepository.findByJournalIdOrderByLineNumber(journalId)).thenReturn(lines);
         when(accountRepository.findAllById(any())).thenReturn(List.of(account));
         when(coaNodeRepository.findAllById(any())).thenReturn(List.of(restrictedNode));
+        when(journalHeadRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         doThrow(new InsufficientBalanceException("ACC-003", BigDecimal.ZERO, new BigDecimal("500.00")))
-                .when(balanceProjectionService).checkOverdraftAll(any(), any(), any(), any());
+                .when(balanceProjectionService).applyJournal(any(), any(), any(), any(), any());
 
         // When / Then
         assertThatThrownBy(() -> service.post(journalId, "admin"))
@@ -245,6 +246,6 @@ class JournalPostingServiceTest {
         service.post(journalId, "admin");
 
         // Then
-        verify(balanceProjectionService).applyJournal(any(), any(), any(), any());
+        verify(balanceProjectionService).applyJournal(any(), any(), any(), any(), any());
     }
 }
