@@ -90,6 +90,18 @@ automatically at startup — tenant registry, schema template) and a `tenant`
 location (run programmatically by `TenantMigrator` once per newly provisioned
 tenant schema).
 
+**Concurrency & consistency in posting.** Two journals posted concurrently
+against the same account(s) are made safe at the database level rather than
+relying on an app-level read-check-write sequence: `BalanceProjectionService`
+applies each account's net debit/credit through a single atomic conditional
+`UPDATE` whose `WHERE` clause enforces the overdraft limit, so the check and
+the mutation can't race apart into two separate statements. When a journal
+touches more than one account, those accounts are always processed in
+canonical (sorted-by-ID) order rather than the order they appear in the
+journal's lines — the standard fix for the deadlock that naive per-account
+locking would otherwise risk when two concurrent journals touch the same two
+accounts in opposite debit/credit order.
+
 ## Running Locally
 
 Requirements: JDK 21+, Docker (for PostgreSQL).
